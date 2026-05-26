@@ -29,6 +29,7 @@ def extract_sheet(ws, market):
         packaging_cost = float(row[37]) if row[37] not in (None, "") else 0.0
         shipping_cost = float(row[38]) if row[38] not in (None, "") else 0.0
         cost_cny = float(row[39]) if row[39] not in (None, "") else 0.0
+        cost_local = float(row[40]) if len(row) > 40 and row[40] not in (None, "") else 0.0
         
         # 确定 sku：优先用子SKU
         sku = sub_sku if sub_sku else main_sku
@@ -48,6 +49,7 @@ def extract_sheet(ws, market):
             "name": name,
             "category3": cat3,
             "costCNY": cost_cny,
+            "costLocal": cost_local,
             "category2": cat2,
             "operateFee": operate_fee,
             "category1": cat1,
@@ -66,12 +68,8 @@ th_products = extract_sheet(ws_th, "泰国")
 all_products.extend(th_products)
 print(f"泰国产品: {len(th_products)}")
 
-# 菲律宾 - 列布局不同
+# 菲律宾 - 列布局同泰国（col 40=销售成本人民币, col 41=销售成本国家币）
 ws_ph = wb["菲律宾成本测算"]
-ph_headers = [str(c.value) if c.value else "" for c in next(ws_ph.iter_rows(min_row=1, max_row=1))]
-ph_col = {h: i for i, h in enumerate(ph_headers)}
-# 菲律宾表结构调整：
-# col 34 = 汇率（菲律宾）, col 35 = 采购价(退税), col 37 = 包材费, col 38 = 头程运费
 for row in ws_ph.iter_rows(min_row=2, values_only=True):
     if not row or all(str(v).strip() == "" for v in row[:5]):
         continue
@@ -82,10 +80,12 @@ for row in ws_ph.iter_rows(min_row=2, values_only=True):
     size = str(row[13]).strip() if row[13] else ""
     
     purchase_cost = float(row[35]) if row[35] not in (None, "") else 0.0
-    operate_fee = 2.0  # 菲律宾操作费默认
-    packaging_cost = float(row[37]) if row[37] not in (None, "") else 0.0
-    shipping_cost = float(row[38]) if row[38] not in (None, "") else 0.0
-    cost_cny = purchase_cost + shipping_cost + packaging_cost + operate_fee
+    operate_fee = float(row[36]) if row[36] not in (None, "") else 0.0
+    packaging_cost = float(row[38]) if row[38] not in (None, "") else 0.0
+    shipping_cost = float(row[39]) if row[39] not in (None, "") else 0.0
+    cost_cny = float(row[40]) if row[40] not in (None, "") else 0.0
+    cost_local = float(row[41]) if len(row) > 41 and row[41] not in (None, "") else 0.0
+    rate = float(row[34]) if row[34] not in (None, "") else 0.0
     
     sku = sub_sku if sub_sku else main_sku
     cat1 = str(row[6]).strip() if row[6] else ""
@@ -103,6 +103,7 @@ for row in ws_ph.iter_rows(min_row=2, values_only=True):
         "name": name,
         "category3": cat3,
         "costCNY": cost_cny,
+        "costLocal": cost_local,
         "category2": cat2,
         "operateFee": operate_fee,
         "category1": cat1,

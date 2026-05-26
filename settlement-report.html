@@ -556,7 +556,12 @@ function analyze(wbSet, wbOrder) {
     // ---- 1. 读取订单列表 ----
     showLoading("正在解析订单列表...");
     var wsOrder = wbOrder.Sheets[wbOrder.SheetNames[0]];
-    var orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "", raw: true });
+    var orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "" });
+    // 订单列表也可能需要手动扩!ref
+    if (orderRows.length <= 2 && wsOrder['!ref']) {
+        wsOrder['!ref'] = 'A1:ZZ9999';
+        orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "" });
+    }
     var orderMap = {};
     for (var i = 0; i < orderRows.length; i++) {
         var r = orderRows[i];
@@ -595,10 +600,11 @@ function analyze(wbSet, wbOrder) {
     showLoading("正在解析结算账单...");
     var wsSet = wbSet.Sheets["订单详情"];
     if (!wsSet) {
-        // 尝试找第一个工作表
         wsSet = wbSet.Sheets[wbSet.SheetNames[0]];
     }
-    var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "", raw: true });
+    // TikTok导出文件!ref范围不完整, 需要手动覆盖才能读到全部行
+    wsSet['!ref'] = 'A1:ZZ9999';
+    var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "" });
     
     var orders = [];
     var unmatched = [];

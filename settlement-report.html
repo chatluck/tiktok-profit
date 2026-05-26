@@ -177,7 +177,8 @@ small{color:var(--muted);font-weight:500}
       <div class="tabs">
         <button class="tab active" data-view="low" onclick="switchView('low')">低利润/异常 <span class="badge" id="lowCount">0</span></button>
         <button class="tab" data-view="sample" onclick="switchView('sample')">样品订单 <span class="badge sample-badge" id="sampleCount">0</span></button>
-        <button class="tab" data-view="all" onclick="switchView('all')">全部订单 <span class="badge all-badge" id="allCount">0</span></button>
+        <button class="tab" data-view="all" onclick="switchView('all')">全部匹配 <span class="badge all-badge" id="allCount">0</span></button>
+        <button class="tab" data-view="unmatched" onclick="switchView('unmatched')">未匹配 <span class="badge" style="background:#64748b" id="unmatchedCount">0</span></button>
       </div>
       <div class="table-wrap"><table><thead><tr><th>结算单号/内部单号</th><th>状态</th><th>创建/结算</th><th>结算金额</th><th>总收入</th><th>折后小计</th><th>商品成本</th><th>到账利润</th><th>利润率</th><th>SKU/商品</th><th>判断</th></tr></thead><tbody id="resultBody"></tbody></table></div>
     </div>
@@ -485,52 +486,60 @@ function analyzeFromJson(data) {
 }
 
 function renderResultsFromOrders(orders, unmatched) {
-    var sampleOrdersList = orders.filter(function(o) { return o.isSample; });
-    var normalOrdersList = orders.filter(function(o) { return !o.isSample; });
+    // 分离匹配和未匹配订单
+    var matchedOrders = orders.filter(function(o) { return o.txKey && o.txKey !== ""; });
+    var unmatchedOrders = orders.filter(function(o) { return !o.txKey || o.txKey === ""; });
+    
+    var sampleOrdersList = matchedOrders.filter(function(o) { return o.isSample; });
+    var normalOrdersList = matchedOrders.filter(function(o) { return !o.isSample; });
     var lowOrdersList = normalOrdersList.filter(function(o) { return o.lowFlag; });
 
     function sum(arr, key) { return arr.reduce(function(a, o) { return a + o[key]; }, 0); }
 
     var summary = {
-        all: orders.length,
-        matched: orders.filter(function(o) { return o.txKey; }).length,
+        all: matchedOrders.length,
+        matched: matchedOrders.length,
         unmatched: unmatched.length,
         sampleCount: sampleOrdersList.length,
         normalCount: normalOrdersList.length,
         lowCount: lowOrdersList.length,
-        totalSettlement: sum(orders, "settlement"),
-        totalIncome: sum(orders, "totalIncome"),
-        totalCostCNY: sum(orders, "productCostCNY"),
-        totalProfit: sum(orders, "realProfit"),
+        totalSettlement: sum(matchedOrders, "settlement"),
+        totalIncome: sum(matchedOrders, "totalIncome"),
+        totalCostCNY: sum(matchedOrders, "productCostCNY"),
+        totalProfit: sum(matchedOrders, "realProfit"),
         normalSettlement: sum(normalOrdersList, "settlement"),
         normalIncome: sum(normalOrdersList, "totalIncome"),
         normalCostCNY: sum(normalOrdersList, "productCostCNY"),
         normalProfit: sum(normalOrdersList, "realProfit"),
         sampleCostCNY: sum(sampleOrdersList, "productCostCNY"),
+        unmatchedSettlement: sum(unmatchedOrders, "settlement"),
+        unmatchedCount: unmatchedOrders.length,
     };
     summary.normalMargin = summary.normalIncome > 0 ? (summary.normalProfit / summary.normalIncome * 100) : null;
 
-    allOrders = orders;
+    allOrders = matchedOrders;
     lowOrders = lowOrdersList;
     sampleOrders = sampleOrdersList;
+    unmatchedOrdersList = unmatchedOrders;
 
     document.getElementById("resultSection").style.display = "block";
     document.getElementById("summaryCards").innerHTML =
-        '<div class="card"><div class="lbl">结算订单</div><div class="val">' + summary.all + '</div></div>' +
-        '<div class="card"><div class="lbl">成功匹配</div><div class="val ok">' + summary.matched + '</div></div>' +
+        '<div class="card"><div class="lbl">匹配结算订单</div><div class="val">' + summary.all + '</div></div>' +
         '<div class="card"><div class="lbl">未匹配</div><div class="val danger">' + summary.unmatched + '</div></div>' +
         '<div class="card sample-card"><div class="lbl">样品订单</div><div class="val sample-text">' + summary.sampleCount + '</div></div>' +
         '<div class="card"><div class="lbl">正常收入</div><div class="val">' + summary.normalCount + '</div></div>' +
         '<div class="card"><div class="lbl">低于' + THRESHOLD + '%</div><div class="val danger">' + summary.lowCount + '</div></div>' +
         '<div class="card"><div class="lbl">利润率</div><div class="val ' + ((summary.normalMargin !== null && summary.normalMargin < THRESHOLD) ? 'danger' : 'ok') + '">' + fmtPct(summary.normalMargin) + '</div></div>' +
+        '<div class="card"><div class="lbl">未匹配结算</div><div class="val danger" style="font-size:17px">' + fmtMoney(summary.unmatchedSettlement, "PHP/THB") + '</div></div>' +
         '<div class="card sample-card"><div class="lbl">样品成本</div><div class="val sample-text">' + fmtCNY(summary.sampleCostCNY) + '</div></div>';
 
     document.getElementById("summaryNote").innerHTML =
-        '<b>口径说明：</b>样品订单 = 总收入为 0 的订单，单独统计不参与低利润筛选。';
+        '<b>口径说明：</b>样品订单 = 总收入为 0 的订单，单独统计不参与低利润筛选。未匹配交易号的订单不参与主统计，但单独列出。';
 
     document.getElementById("lowCount").textContent = lowOrders.length;
     document.getElementById("sampleCount").textContent = sampleOrders.length;
-    document.getElementById("allCount").textContent = orders.length;
+    document.getElementById("allCount").textContent = matchedOrders.length;
+    document.getElementById("unmatchedCount").textContent = unmatchedOrders.length;
     currentView = "low";
     switchView("low");
 }
@@ -687,11 +696,11 @@ function analyze(wbSet, wbOrder) {
 var allOrders = [];
 var lowOrders = [];
 var sampleOrders = [];
+var unmatchedOrdersList = [];
 var currentView = "low";
 
 function switchView(view) {
     currentView = view;
-    // 更新 tab 样式
     var tabs = document.querySelectorAll(".tab");
     for (var i = 0; i < tabs.length; i++) {
         tabs[i].classList.remove("active");
@@ -701,6 +710,7 @@ function switchView(view) {
     var data;
     if (view === "low") data = lowOrders;
     else if (view === "sample") data = sampleOrders;
+    else if (view === "unmatched") data = unmatchedOrdersList;
     else data = allOrders;
 
     renderTable(data);

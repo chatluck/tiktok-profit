@@ -133,24 +133,36 @@ small{color:var(--muted);font-weight:500}
     </div>
   </div>
 
-  <div class="hero" id="uploadSection">
+    <div class="hero" id="uploadSection">
     <h1>结算订单利润分析</h1>
     <div class="sub">上传 TikTok 结算账单和订单列表，自动匹配 SKU 成本，核算每笔订单的到账利润。样品订单（收入=0）自动单独统计。</div>
+    <div class="note warn" style="margin-bottom:14px;font-size:.82rem">
+      <b>注意：</b>TikTok 导出的 XLSX 文件可能被浏览器错误截断。如果发现只读到1单，
+      请使用 <b>JSON 模式</b>：先在电脑上双击 <code>convert_settlement.bat</code> 生成 JSON 文件，再拖入下方 JSON 区域。
+    </div>
     <div class="upload-grid">
       <div class="upload-box" id="dropSettlement" onclick="document.getElementById('fileSettlement').click()">
         <div class="upload-icon">&#128202;</div>
-        <div class="label">结算账单</div>
+        <div class="label">结算账单 (XLSX)</div>
         <div class="hint">income_*.xlsx（订单详情工作表）</div>
         <div class="file-name" id="settlementFileName"></div>
         <input type="file" id="fileSettlement" accept=".xlsx,.xls" style="display:none">
       </div>
       <div class="upload-box" id="dropOrderList" onclick="document.getElementById('fileOrderList').click()">
         <div class="upload-icon">&#128203;</div>
-        <div class="label">订单列表</div>
+        <div class="label">订单列表 (XLSX)</div>
         <div class="hint">订单列表下载*.xlsx（含商品SKU和交易号）</div>
         <div class="file-name" id="orderFileName"></div>
         <input type="file" id="fileOrderList" accept=".xlsx,.xls" style="display:none">
       </div>
+    </div>
+    <div style="text-align:center;padding:6px 0;color:#64748b;font-size:.82rem">—— 或 ——</div>
+    <div class="upload-box" id="dropJson" onclick="document.getElementById('fileJson').click()" style="margin-bottom:12px;margin-top:8px;border-color:#bfdbfe;background:#eff6ff">
+      <div class="upload-icon">&#128195;</div>
+      <div class="label">直接上传 JSON（推荐）</div>
+      <div class="hint">先用 convert_settlement.py 转换 TikTok XLSX → JSON，然后拖入此处</div>
+      <div class="file-name" id="jsonFileName"></div>
+      <input type="file" id="fileJson" accept=".json" style="display:none">
     </div>
     <div class="btn-row">
       <button class="btn btn-green" id="analyzeBtn" onclick="startAnalysis()" disabled>开始核算</button>
@@ -188,6 +200,7 @@ small{color:var(--muted);font-weight:500}
 var ALL_PRODUCTS = __PRODUCTS_DATA_PLACEHOLDER__;
 var COST_BY_SKU = {};
 var THB_CNY = 0.2088;
+var PHP_CNY = 0.1105;
 var THRESHOLD = 25;
 var GIFT_SKUS = new Set(["1A0009"]);
 
@@ -208,6 +221,8 @@ var GIFT_SKUS = new Set(["1A0009"]);
 // ====== 文件上传 ======
 var settlementFile = null;
 var orderFile = null;
+var jsonFileData = null; // 预转换的 JSON 数据
+var inputMode = "xlsx"; // "xlsx" | "json"
 
 function handleFileInput(inputId, storeVar, fileNameEl, dropBoxId) {
     var input = document.getElementById(inputId);
@@ -219,12 +234,44 @@ function handleFileInput(inputId, storeVar, fileNameEl, dropBoxId) {
     checkReady();
 }
 
+function handleJsonInput() {
+    var input = document.getElementById("fileJson");
+    var file = input.files[0];
+    if (!file) return;
+    document.getElementById("jsonFileName").textContent = "[" + file.name + "]";
+    document.getElementById("dropJson").classList.add("has-file");
+    // 读取 JSON 文件
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            jsonFileData = JSON.parse(e.target.result);
+            inputMode = "json";
+            document.getElementById("uploadStatus").textContent = "JSON 已就绪，点击开始核算";
+            document.getElementById("uploadStatus").style.color = "#059669";
+            document.getElementById("analyzeBtn").disabled = false;
+        } catch(err) {
+            document.getElementById("uploadStatus").textContent = "JSON 解析失败：" + err.message;
+            document.getElementById("uploadStatus").style.color = "#dc2626";
+        }
+    };
+    reader.readAsText(file);
+}
+
 document.getElementById("fileSettlement").addEventListener("change", function() {
+    inputMode = "xlsx";
+    jsonFileData = null;
+    document.getElementById("jsonFileName").textContent = "";
+    document.getElementById("dropJson").classList.remove("has-file");
     handleFileInput("fileSettlement", "settlementFile", "settlementFileName", "dropSettlement");
 });
 document.getElementById("fileOrderList").addEventListener("change", function() {
+    inputMode = "xlsx";
+    jsonFileData = null;
+    document.getElementById("jsonFileName").textContent = "";
+    document.getElementById("dropJson").classList.remove("has-file");
     handleFileInput("fileOrderList", "orderFile", "orderFileName", "dropOrderList");
 });
+document.getElementById("fileJson").addEventListener("change", handleJsonInput);
 
 // Drag & drop
 ["dropSettlement", "dropOrderList"].forEach(function(id) {
@@ -244,16 +291,24 @@ document.getElementById("fileOrderList").addEventListener("change", function() {
 function checkReady() {
     var btn = document.getElementById("analyzeBtn");
     var status = document.getElementById("uploadStatus");
-    if (window.settlementFile && window.orderFile) {
+    if (inputMode === "json" && jsonFileData) {
+        btn.disabled = false;
+        status.textContent = "JSON 已就绪，点击开始核算";
+        status.style.color = "#059669";
+    } else if (window.settlementFile && window.orderFile) {
         btn.disabled = false;
         status.textContent = "已就绪，点击开始核算";
         status.style.color = "#059669";
     } else {
         btn.disabled = true;
-        var parts = [];
-        if (!window.settlementFile) parts.push("结算账单");
-        if (!window.orderFile) parts.push("订单列表");
-        status.textContent = "请上传" + parts.join(" + ");
+        if (inputMode === "json") {
+            status.textContent = "请上传 JSON 文件";
+        } else {
+            var parts = [];
+            if (!window.settlementFile) parts.push("结算账单");
+            if (!window.orderFile) parts.push("订单列表");
+            status.textContent = "请上传" + parts.join(" + ");
+        }
         status.style.color = "";
     }
 }
@@ -298,6 +353,20 @@ function fmtPct(v) {
 
 // ====== 主分析逻辑 ======
 function startAnalysis() {
+    if (inputMode === "json" && jsonFileData) {
+        showLoading("正在分析 JSON 数据...");
+        // 直接使用预转换的 JSON 数据
+        setTimeout(function() {
+            try {
+                analyzeFromJson(jsonFileData);
+            } catch(e) {
+                hideLoading();
+                document.getElementById("uploadStatus").textContent = "分析失败：" + e.message;
+                document.getElementById("uploadStatus").style.color = "#dc2626";
+            }
+        }, 100);
+        return;
+    }
     if (!settlementFile || !orderFile) return;
     showLoading("正在读取 Excel 文件...");
 
@@ -322,6 +391,152 @@ function startAnalysis() {
         document.getElementById("uploadStatus").textContent = "读取文件失败：" + err.message;
         document.getElementById("uploadStatus").style.color = "#dc2626";
     });
+}
+
+function analyzeFromJson(data) {
+    // data = { incomeFile, ordersFile, headers, settlement: [...], orderMap: {...} }
+    var orderMap = {};
+    var omKeys = Object.keys(data.orderMap || {});
+    for (var i = 0; i < omKeys.length; i++) {
+        var k = omKeys[i];
+        var v = data.orderMap[k];
+        var items = [];
+        for (var j = 0; j < (v.items || []).length; j++) {
+            var it = v.items[j];
+            var c = COST_BY_SKU[it.sku];
+            if (c) {
+                var ic = c.unitCostCNY * it.qty;
+                items.push({ sku: it.sku, qty: it.qty, name: c.name || it.name, unitCostCNY: c.unitCostCNY, totalCostCNY: ic, matched: true, isGift: it.isGift });
+            } else {
+                items.push({ sku: it.sku, qty: it.qty, name: it.name, unitCostCNY: 0, totalCostCNY: 0, matched: false, isGift: it.isGift });
+            }
+        }
+        orderMap[k] = {
+            orderNo: v.orderNo || "",
+            tradeNo: k,
+            status: v.status || "",
+            items: items,
+            knownProductCostCNY: items.reduce(function(a, it) { return a + (it.matched ? it.totalCostCNY : 0); }, 0),
+            missingSkus: items.filter(function(it) { return !it.matched && !it.isGift; }).map(function(it) { return it.sku; }),
+        };
+    }
+
+    // 直接处理结算行
+    var orders = [];
+    var unmatched = [];
+    var EXCHANGE = { "PHP": 0.1105, "THB": 0.2088 };
+
+    for (var k = 0; k < data.settlement.length; k++) {
+        var s = data.settlement[k];
+        var oid = text(s["订单ID/调整单ID"]);
+        if (!oid) continue;
+
+        var om = orderMap[oid];
+        var txKey = oid;
+        if (!om) {
+            var keys = Object.keys(orderMap);
+            for (var kk = 0; kk < keys.length; kk++) {
+                if (oid.indexOf(keys[kk]) === 0 || keys[kk].indexOf(oid) === 0) {
+                    om = orderMap[keys[kk]];
+                    txKey = keys[kk];
+                    break;
+                }
+            }
+        }
+        if (!om) { unmatched.push(oid); }
+
+        var currency = text(s["货币"]) || "THB";
+        var exchangeRate = currency === "PHP" ? 0.1105 : 0.2088;
+        var settlement = toFloat(s["结算总金额"]);
+        var totalIncome = toFloat(s["总收入"]);
+        var discountedSubtotal = toFloat(s["享受商家折扣后小计"]);
+        var refundAfter = toFloat(s["享受商家折扣后的退款小计"] || 0);
+        var productCostCNY = om ? om.knownProductCostCNY : 0;
+        var productCostLocal = productCostCNY / exchangeRate;
+        var realProfit = settlement - productCostLocal;
+        var isSample = totalIncome <= 0;
+
+        var baseIncome = isSample ? null : totalIncome;
+        var realMargin = (baseIncome && baseIncome > 0) ? (realProfit / baseIncome * 100) : null;
+        var settlementMargin = (baseIncome && baseIncome > 0) ? (settlement / baseIncome * 100) : null;
+        var low = !isSample && ((realMargin === null) || realMargin < THRESHOLD || settlement <= 0);
+
+        var reason = [];
+        if (isSample) reason.push("样品订单（收入为0）");
+        else if (settlement <= 0 || refundAfter < 0) reason.push("退款/0结算");
+        if (!isSample) {
+            if (realMargin === null) reason.push("无法计算利润率");
+            else if (realMargin < THRESHOLD) reason.push("低于" + THRESHOLD + "%");
+        }
+        if (!om) reason.push("未匹配交易号");
+        if (reason.length === 0) reason.push("正常");
+
+        orders.push({
+            oid: oid, txKey: txKey, orderNo: om ? om.orderNo : "", status: om ? om.status : "",
+            createdAt: text(s["订单创建时间"]), settledAt: text(s["订单结算时间"]),
+            currency: currency, settlement: settlement, totalIncome: totalIncome,
+            discountedSubtotal: discountedSubtotal, productCostCNY: productCostCNY,
+            productCostLocal: productCostLocal, realProfit: realProfit,
+            realProfitCNY: realProfit * exchangeRate,
+            realMargin: realMargin, settlementMargin: settlementMargin,
+            isSample: isSample, lowFlag: low, reason: reason.join("；"),
+            items: om ? om.items : [],
+        });
+    }
+
+    renderResultsFromOrders(orders, unmatched);
+    hideLoading();
+}
+
+function renderResultsFromOrders(orders, unmatched) {
+    var sampleOrders = orders.filter(function(o) { return o.isSample; });
+    var normalOrders = orders.filter(function(o) { return !o.isSample; });
+    var lowOrders = normalOrders.filter(function(o) { return o.lowFlag; });
+
+    function sum(arr, key) { return arr.reduce(function(a, o) { return a + o[key]; }, 0); }
+
+    var summary = {
+        all: orders.length,
+        matched: orders.filter(function(o) { return o.txKey; }).length,
+        unmatched: unmatched.length,
+        sampleCount: sampleOrders.length,
+        normalCount: normalOrders.length,
+        lowCount: lowOrders.length,
+        totalSettlement: sum(orders, "settlement"),
+        totalIncome: sum(orders, "totalIncome"),
+        totalCostCNY: sum(orders, "productCostCNY"),
+        totalProfit: sum(orders, "realProfit"),
+        normalSettlement: sum(normalOrders, "settlement"),
+        normalIncome: sum(normalOrders, "totalIncome"),
+        normalCostCNY: sum(normalOrders, "productCostCNY"),
+        normalProfit: sum(normalOrders, "realProfit"),
+        sampleCostCNY: sum(sampleOrders, "productCostCNY"),
+    };
+    summary.normalMargin = summary.normalIncome > 0 ? (summary.normalProfit / summary.normalIncome * 100) : null;
+
+    allOrders = orders;
+    lowOrders = lowOrders;
+    sampleOrders = sampleOrders;
+
+    document.getElementById("resultSection").style.display = "block";
+    document.getElementById("summaryCards").innerHTML =
+        '<div class="card"><div class="lbl">结算订单</div><div class="val">' + summary.all + '</div></div>' +
+        '<div class="card"><div class="lbl">成功匹配</div><div class="val ok">' + summary.matched + '</div></div>' +
+        '<div class="card"><div class="lbl">未匹配</div><div class="val danger">' + summary.unmatched + '</div></div>' +
+        '<div class="card sample-card"><div class="lbl">样品订单</div><div class="val sample-text">' + summary.sampleCount + '</div></div>' +
+        '<div class="card"><div class="lbl">正常收入</div><div class="val">' + summary.normalCount + '</div></div>' +
+        '<div class="card"><div class="lbl">低于' + THRESHOLD + '%</div><div class="val danger">' + summary.lowCount + '</div></div>' +
+        '<div class="card"><div class="lbl">利润率</div><div class="val ' + ((summary.normalMargin !== null && summary.normalMargin < THRESHOLD) ? 'danger' : 'ok') + '">' + fmtPct(summary.normalMargin) + '</div></div>' +
+        '<div class="card sample-card"><div class="lbl">样品成本</div><div class="val sample-text">' + fmtCNY(summary.sampleCostCNY) + '</div></div>';
+
+    document.getElementById("summaryNote").innerHTML =
+        '<b>口径说明：</b>样品订单 = 总收入为 0 的订单，单独统计不参与低利润筛选。';
+
+    document.getElementById("lowCount").textContent = lowOrders.length;
+    document.getElementById("sampleCount").textContent = sampleOrders.length;
+    document.getElementById("allCount").textContent = orders.length;
+    currentView = "low";
+    switchView("low");
 }
 
 function readFileAsArrayBuffer(file) {
@@ -388,6 +603,18 @@ function analyze(wbSet, wbOrder) {
         wsSet = wbSet.Sheets[wbSet.SheetNames[0]];
     }
     var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "" });
+    
+    // 检测 XLSX 是否被截断：如果行数 <= 1，告知用户用 JSON 模式
+    if (setRows.length <= 1) {
+        hideLoading();
+        document.getElementById("uploadStatus").innerHTML = 
+            'TikTok 导出的 XLSX 文件范围信息不完整，无法正确读取。请先用 <b>convert_settlement.py</b> 转换为 JSON 模式。<br>' +
+            '步骤：在电脑上运行 <code>python convert_settlement.py --income income.xlsx --orders orders.xlsx</code>，' +
+            '把生成的 settlement-data.json 拖入上方蓝色区域。';
+        document.getElementById("uploadStatus").style.color = "#dc2626";
+        return;
+    }
+    
     var orders = [];
     var unmatched = [];
 
@@ -412,17 +639,18 @@ function analyze(wbSet, wbOrder) {
         if (!om) { unmatched.push(oid); }
 
         var currency = text(s["货币"]) || "THB";
+        var exchangeRate = currency === "PHP" ? 0.1105 : 0.2088;
         var settlement = toFloat(s["结算总金额"]);
         var totalIncome = toFloat(s["总收入"]);
         var discountedSubtotal = toFloat(s["享受商家折扣后小计"]);
         var refundAfter = toFloat(s["享受商家折扣后的退款小计"] || 0);
         var productCostCNY = om ? om.knownProductCostCNY : 0;
-        var productCostTHB = productCostCNY / THB_CNY;
-        var realProfitTHB = settlement - productCostTHB;
+        var productCostLocal = productCostCNY / exchangeRate;
+        var realProfit = settlement - productCostLocal;
         var isSample = totalIncome <= 0;
 
         var baseIncome = isSample ? null : totalIncome;
-        var realMargin = (baseIncome && baseIncome > 0) ? (realProfitTHB / baseIncome * 100) : null;
+        var realMargin = (baseIncome && baseIncome > 0) ? (realProfit / baseIncome * 100) : null;
         var settlementMargin = (baseIncome && baseIncome > 0) ? (settlement / baseIncome * 100) : null;
         var low = !isSample && ((realMargin === null) || realMargin < THRESHOLD || settlement <= 0);
 
@@ -436,7 +664,7 @@ function analyze(wbSet, wbOrder) {
         if (om && om.missingSkus.length > 0) reason.push("SKU未匹配: " + om.missingSkus.slice(0,5).join(","));
         if (!om) reason.push("未匹配交易号");
         if (reason.length === 0) reason.push("正常");
-
+        
         orders.push({
             oid: oid,
             txKey: txKey,
@@ -449,9 +677,9 @@ function analyze(wbSet, wbOrder) {
             totalIncome: totalIncome,
             discountedSubtotal: discountedSubtotal,
             productCostCNY: productCostCNY,
-            productCostTHB: productCostTHB,
-            realProfitTHB: realProfitTHB,
-            realProfitCNY: realProfitTHB * THB_CNY,
+            productCostLocal: productCostLocal,
+            realProfit: realProfit,
+            realProfitCNY: realProfit * exchangeRate,
             realMargin: realMargin,
             settlementMargin: settlementMargin,
             isSample: isSample,
@@ -461,82 +689,14 @@ function analyze(wbSet, wbOrder) {
         });
     }
 
-    // ---- 3. 分类 ----
-    var sampleOrders = orders.filter(function(o) { return o.isSample; });
-    var normalOrders = orders.filter(function(o) { return !o.isSample; });
-    var lowOrders = normalOrders.filter(function(o) { return o.lowFlag; });
-
-    // ---- 4. 汇总统计 ----
-    function sum(arr, key) { return arr.reduce(function(a, o) { return a + o[key]; }, 0); }
-
-    var summary = {
-        all: orders.length,
-        matched: orders.filter(function(o) { return o.txKey; }).length,
-        unmatched: unmatched.length,
-        sampleCount: sampleOrders.length,
-        normalCount: normalOrders.length,
-        lowCount: lowOrders.length,
-        totalSettlement: sum(orders, "settlement"),
-        totalIncome: sum(orders, "totalIncome"),
-        totalCostCNY: sum(orders, "productCostCNY"),
-        totalCostTHB: sum(orders, "productCostTHB"),
-        totalProfit: sum(orders, "realProfitTHB"),
-        normalSettlement: sum(normalOrders, "settlement"),
-        normalIncome: sum(normalOrders, "totalIncome"),
-        normalCostCNY: sum(normalOrders, "productCostCNY"),
-        normalCostTHB: sum(normalOrders, "productCostTHB"),
-        normalProfit: sum(normalOrders, "realProfitTHB"),
-        sampleCostCNY: sum(sampleOrders, "productCostCNY"),
-        sampleCostTHB: sum(sampleOrders, "productCostTHB"),
-    };
-    summary.normalMargin = summary.normalIncome > 0 ? (summary.normalProfit / summary.normalIncome * 100) : null;
-
-    // ---- 5. 渲染 ----
-    renderResults(summary, orders, lowOrders, sampleOrders, normalOrders);
+    // ---- 3. 渲染 ----
+    renderResultsFromOrders(orders, unmatched);
     hideLoading();
 }
-
-// ====== 渲染结果 ======
 var allOrders = [];
 var lowOrders = [];
 var sampleOrders = [];
 var currentView = "low";
-
-function renderResults(summary, orders, low, sample, normal) {
-    allOrders = orders;
-    lowOrders = low;
-    sampleOrders = sample;
-
-    // 显示结果区
-    document.getElementById("resultSection").style.display = "block";
-
-    // 汇总卡片
-    document.getElementById("summaryCards").innerHTML =
-        '<div class="card"><div class="lbl">结算订单</div><div class="val">' + summary.all + '</div></div>' +
-        '<div class="card"><div class="lbl">成功匹配</div><div class="val ok">' + summary.matched + '</div></div>' +
-        '<div class="card"><div class="lbl">未匹配</div><div class="val danger">' + summary.unmatched + '</div></div>' +
-        '<div class="card sample-card"><div class="lbl">样品订单</div><div class="val sample-text">' + summary.sampleCount + '</div></div>' +
-        '<div class="card"><div class="lbl">正常收入订单</div><div class="val">' + summary.normalCount + '</div></div>' +
-        '<div class="card"><div class="lbl">低于' + THRESHOLD + '%</div><div class="val danger">' + summary.lowCount + '</div></div>' +
-        '<div class="card"><div class="lbl">订单利润率</div><div class="val ' + (summary.normalMargin !== null && summary.normalMargin < THRESHOLD ? 'danger' : 'ok') + '">' + fmtPct(summary.normalMargin) + '</div></div>' +
-        '<div class="card sample-card"><div class="lbl">样品单成本</div><div class="val sample-text">' + fmtCNY(summary.sampleCostCNY) + '</div></div>';
-
-    document.getElementById("summaryNote").innerHTML =
-        '<b>口径说明：</b>样品订单 = 总收入为 0 的订单，单独统计不参与低利润筛选。<br>' +
-        '正常订单：结算总额 ' + fmtMoney(summary.normalSettlement) + ' | 商品成本 ' + fmtCNY(summary.normalCostCNY) + ' ≈ ' + fmtMoney(summary.normalCostTHB) + ' | 到账利润 ' + fmtMoney(summary.normalProfit);
-    if (summary.unmatched.length > 0) {
-        document.getElementById("summaryNote").innerHTML += '<br><b>未匹配交易号：</b>' + summary.unmatched.join(", ");
-    }
-
-    // Tab 计数
-    document.getElementById("lowCount").textContent = low.length;
-    document.getElementById("sampleCount").textContent = sample.length;
-    document.getElementById("allCount").textContent = orders.length;
-
-    // 默认显示低利润
-    currentView = "low";
-    switchView("low");
-}
 
 function switchView(view) {
     currentView = view;
@@ -567,7 +727,7 @@ function renderTable(orders) {
         var o = orders[i];
         var cls = o.isSample ? "sample" : (o.lowFlag ? "bad" : "");
         var marginClass = o.isSample ? "sample-text" : (o.lowFlag ? "danger" : "ok");
-        var profitClass = o.realProfitTHB < 0 ? "danger" : "ok";
+        var profitClass = o.realProfit < 0 ? "danger" : "ok";
         var skuHtml = renderSku(o.items);
 
         html += '<tr class="' + cls + '">' +
@@ -577,8 +737,8 @@ function renderTable(orders) {
             '<td class="num">' + fmtMoney(o.settlement, o.currency) + '</td>' +
             '<td class="num">' + fmtMoney(o.totalIncome, o.currency) + '</td>' +
             '<td class="num">' + fmtMoney(o.discountedSubtotal, o.currency) + '</td>' +
-            '<td class="num">' + fmtCNY(o.productCostCNY) + '<br><small>' + fmtMoney(o.productCostTHB, o.currency) + '</small></td>' +
-            '<td class="num ' + profitClass + '">' + fmtMoney(o.realProfitTHB, o.currency) + '<br><small>' + fmtCNY(o.realProfitCNY) + '</small></td>' +
+            '<td class="num">' + fmtCNY(o.productCostCNY) + '<br><small>' + fmtMoney(o.productCostLocal, o.currency) + '</small></td>' +
+            '<td class="num ' + profitClass + '">' + fmtMoney(o.realProfit, o.currency) + '<br><small>' + fmtCNY(o.realProfitCNY) + '</small></td>' +
             '<td class="num ' + marginClass + '">' + fmtPct(o.realMargin) + '<br><small>结算率 ' + fmtPct(o.settlementMargin) + '</small></td>' +
             '<td>' + skuHtml + '</td>' +
             '<td>' + o.reason + '</td>' +

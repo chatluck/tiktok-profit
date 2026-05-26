@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok 结算自动核算</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+    --bg:#07111f;
+    --bg2:#0b1730;
+    --card:#ffffff;
+    --card-soft:#f8fafc;
+    --line:#e5e7eb;
+    --text:#0f172a;
+    --muted:#64748b;
+    --brand:#0f766e;
+    --brand2:#14b8a6;
+    --brand-dark:#115e59;
+    --gold:#f59e0b;
+    --red:#dc2626;
+    --green:#059669;
+    --blue:#2563eb;
+    --shadow:0 24px 70px rgba(2,8,23,.18);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+    min-height:100vh;color:var(--text);
+    background:radial-gradient(circle at 12% 10%,rgba(20,184,166,.28),transparent 28%),radial-gradient(circle at 90% 0%,rgba(37,99,235,.22),transparent 30%),linear-gradient(135deg,var(--bg),var(--bg2) 55%,#0f172a);
+    padding:28px;
+}
+body:before{
+    content:"";position:fixed;inset:0;pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);
+    background-size:46px 46px;mask-image:linear-gradient(to bottom,rgba(0,0,0,.8),transparent 75%);
+}
+.wrap{position:relative;max-width:1560px;margin:0 auto}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:26px;color:#fff}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--brand2),#22d3ee);display:flex;align-items:center;justify-content:center;font-weight:900;color:#06201d;box-shadow:0 14px 34px rgba(20,184,166,.35)}
+.brand-title{font-size:1.05rem;font-weight:800;letter-spacing:.02em}
+.brand-sub{font-size:.78rem;color:#cbd5e1;margin-top:2px}
+.nav-links{display:flex;gap:14px}
+.nav-links a{color:#94a3b8;text-decoration:none;font-size:.82rem;font-weight:700;padding:7px 14px;border-radius:999px;transition:.2s}
+.nav-links a:hover{background:rgba(255,255,255,.08);color:#fff}
+.hero{background:var(--card);border-radius:24px;padding:24px;box-shadow:var(--shadow);margin-bottom:18px}
+h1{margin:0 0 8px;font-size:30px;font-weight:800}
+h2{margin:0 0 14px;font-size:20px;font-weight:800}
+.sub{color:var(--muted);line-height:1.7;margin-bottom:18px}
+
+/* Upload area */
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px}
+.upload-box{border:2px dashed #cbd5e1;border-radius:16px;padding:28px 20px;text-align:center;background:var(--card-soft);transition:.2s;cursor:pointer}
+.upload-box.dragover{border-color:var(--brand2);background:#ecfeff}
+.upload-box.has-file{border-color:var(--brand);background:#ecfeff;border-style:solid}
+.upload-icon{font-size:32px;margin-bottom:8px;color:var(--muted)}
+.upload-box .label{font-weight:800;font-size:.94rem;margin-bottom:4px}
+.upload-box .hint{font-size:.78rem;color:var(--muted)}
+.upload-box .file-name{font-weight:700;color:var(--brand);margin-top:6px;font-size:.86rem}
+
+.btn-row{display:flex;gap:12px;margin-bottom:18px;align-items:center}
+.btn{background:#0f172a;color:#fff;border:none;border-radius:999px;padding:12px 28px;font-size:.92rem;font-weight:900;cursor:pointer;transition:.2s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(15,23,42,.25)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-green{background:linear-gradient(135deg,var(--brand),var(--brand2))}
+.btn-green:hover{box-shadow:0 8px 24px rgba(20,184,166,.35)}
+.status{font-size:.84rem;color:var(--muted);font-weight:600;flex:1;text-align:right}
+
+/* Summary cards */
+.cards{display:grid;grid-template-columns:repeat(8,1fr);gap:12px;margin-top:18px;margin-bottom:18px}
+.card{border:1px solid var(--line);border-radius:16px;padding:14px;background:var(--card-soft)}
+.card .lbl{font-size:12px;color:var(--muted);font-weight:800}
+.card .val{font-size:22px;font-weight:950;margin-top:8px}
+.sample-card{background:#eff6ff;border-color:#bfdbfe}
+.danger{color:var(--red)!important}
+.ok{color:var(--green)!important}
+.sample-text{color:var(--blue)!important}
+.note{background:#ecfeff;border:1px solid #99f6e4;color:#115e59;border-radius:14px;padding:12px;margin-top:14px;line-height:1.6}
+.note.warn{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+
+/* Panel */
+.panel{background:var(--card);border-radius:24px;padding:24px;box-shadow:var(--shadow);margin-bottom:18px;display:none}
+.panel.active{display:block}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:1450px}
+th{background:var(--card-soft);color:#475569;text-align:left;padding:12px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
+td{padding:11px 12px;border-bottom:1px solid #eef2f7;vertical-align:top;font-size:12.5px}
+tr.bad{background:#fff7ed}
+tr.sample{background:#eff6ff}
+tr:hover{background:var(--card-soft)}
+.num{text-align:right;white-space:nowrap;font-weight:800}
+.mono{font-family:Consolas,"SFMono-Regular",monospace;font-size:11px}
+small{color:var(--muted);font-weight:500}
+.sku-item{padding:5px 0;border-bottom:1px dashed var(--line);min-width:220px}
+.sku-item:last-child{border-bottom:none}
+.sku-item span{float:right;color:var(--brand);font-weight:800}
+.sku-item em{font-style:normal;color:var(--muted);font-size:11.5px}
+.empty{text-align:center;color:#94a3b8;padding:30px}
+.tabs{display:flex;gap:8px;margin-bottom:16px}
+.tab{padding:10px 20px;border-radius:999px;font-size:.84rem;font-weight:800;cursor:pointer;border:none;background:var(--card-soft);color:var(--muted);transition:.2s}
+.tab.active{background:var(--text);color:#fff}
+.tab .badge{display:inline-block;background:var(--red);color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;margin-left:4px}
+.tab .badge.sample-badge{background:var(--blue)}
+.tab .badge.all-badge{background:var(--muted)}
+.footer{color:#94a3b8;text-align:center;margin:20px;font-size:.8rem}
+
+/* Loading overlay */
+#loadingOverlay{display:none;position:fixed;inset:0;background:rgba(7,17,31,.75);z-index:1000;justify-content:center;align-items:center;flex-direction:column;gap:16px;color:#fff}
+#loadingOverlay.active{display:flex}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.15);border-top-color:#14b8a6;border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:1rem;font-weight:600}
+
+@media(max-width:1100px){
+    .upload-grid{grid-template-columns:1fr}
+    .cards{grid-template-columns:repeat(2,1fr)}
+    body{padding:12px}
+    .nav-links{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">T</div>
+      <div><div class="brand-title">TikTok 结算自动核算</div><div class="brand-sub">上传账单 → 自动分析到账利润</div></div>
+    </div>
+    <div class="nav-links">
+      <a href="index.html">利润核算</a>
+      <a href="settlement-report.html" style="background:rgba(255,255,255,.08);color:#fff">结算分析</a>
+    </div>
+  </div>
+
+  <div class="hero" id="uploadSection">
+    <h1>结算订单利润分析</h1>
+    <div class="sub">上传 TikTok 结算账单和订单列表，自动匹配 SKU 成本，核算每笔订单的到账利润。样品订单（收入=0）自动单独统计。</div>
+    <div class="upload-grid">
+      <div class="upload-box" id="dropSettlement" onclick="document.getElementById('fileSettlement').click()">
+        <div class="upload-icon">&#128202;</div>
+        <div class="label">结算账单</div>
+        <div class="hint">income_*.xlsx（订单详情工作表）</div>
+        <div class="file-name" id="settlementFileName"></div>
+        <input type="file" id="fileSettlement" accept=".xlsx,.xls" style="display:none">
+      </div>
+      <div class="upload-box" id="dropOrderList" onclick="document.getElementById('fileOrderList').click()">
+        <div class="upload-icon">&#128203;</div>
+        <div class="label">订单列表</div>
+        <div class="hint">订单列表下载*.xlsx（含商品SKU和交易号）</div>
+        <div class="file-name" id="orderFileName"></div>
+        <input type="file" id="fileOrderList" accept=".xlsx,.xls" style="display:none">
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-green" id="analyzeBtn" onclick="startAnalysis()" disabled>开始核算</button>
+      <div class="status" id="uploadStatus">请上传结算账单 + 订单列表</div>
+    </div>
+  </div>
+
+  <div id="resultSection" style="display:none">
+    <div class="hero">
+      <h2>汇总</h2>
+      <div class="cards" id="summaryCards"></div>
+      <div class="note" id="summaryNote"></div>
+    </div>
+
+    <div class="panel active">
+      <div class="tabs">
+        <button class="tab active" data-view="low" onclick="switchView('low')">低利润/异常 <span class="badge" id="lowCount">0</span></button>
+        <button class="tab" data-view="sample" onclick="switchView('sample')">样品订单 <span class="badge sample-badge" id="sampleCount">0</span></button>
+        <button class="tab" data-view="all" onclick="switchView('all')">全部订单 <span class="badge all-badge" id="allCount">0</span></button>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>结算单号/内部单号</th><th>状态</th><th>创建/结算</th><th>结算金额</th><th>总收入</th><th>折后小计</th><th>商品成本</th><th>到账利润</th><th>利润率</th><th>SKU/商品</th><th>判断</th></tr></thead><tbody id="resultBody"></tbody></table></div>
+    </div>
+  </div>
+
+  <div class="footer">数据完全在浏览器本地处理，不上传服务器。SheetJS &copy; xlsx解析库从 CDN 加载。</div>
+</div>
+
+<div id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">正在分析...</div>
+</div>
+
+<script>
+// ====== 产品数据嵌入 ======
+var ALL_PRODUCTS = __PRODUCTS_DATA_PLACEHOLDER__;
+var COST_BY_SKU = {};
+var THB_CNY = 0.2088;
+var THRESHOLD = 25;
+var GIFT_SKUS = new Set(["1A0009"]);
+
+// 构建成本映射
+(function buildCostMap() {
+    var list = ALL_PRODUCTS;
+    if (list && list.products) list = list.products;
+    if (!Array.isArray(list)) return;
+    for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        var sku = (p.sku || p.id || "").toString().trim();
+        if (!sku) continue;
+        var cost = parseFloat(p.purchaseCost || 0) + parseFloat(p.shippingCost || 0) + parseFloat(p.packagingCost || 0) + parseFloat(p.operateFee || 0);
+        COST_BY_SKU[sku] = { name: p.name || "", unitCostCNY: cost };
+    }
+})();
+
+// ====== 文件上传 ======
+var settlementFile = null;
+var orderFile = null;
+
+function handleFileInput(inputId, storeVar, fileNameEl, dropBoxId) {
+    var input = document.getElementById(inputId);
+    var file = input.files[0];
+    if (!file) return;
+    window[storeVar] = file;
+    document.getElementById(fileNameEl).textContent = "[" + file.name + "]";
+    document.getElementById(dropBoxId).classList.add("has-file");
+    checkReady();
+}
+
+document.getElementById("fileSettlement").addEventListener("change", function() {
+    handleFileInput("fileSettlement", "settlementFile", "settlementFileName", "dropSettlement");
+});
+document.getElementById("fileOrderList").addEventListener("change", function() {
+    handleFileInput("fileOrderList", "orderFile", "orderFileName", "dropOrderList");
+});
+
+// Drag & drop
+["dropSettlement", "dropOrderList"].forEach(function(id) {
+    var el = document.getElementById(id);
+    el.addEventListener("dragover", function(e) { e.preventDefault(); this.classList.add("dragover"); });
+    el.addEventListener("dragleave", function(e) { this.classList.remove("dragover"); });
+    el.addEventListener("drop", function(e) {
+        e.preventDefault(); this.classList.remove("dragover");
+        var file = e.dataTransfer.files[0];
+        if (!file) return;
+        var input = this.querySelector("input[type=file]");
+        var dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+        input.dispatchEvent(new Event("change"));
+    });
+});
+
+function checkReady() {
+    var btn = document.getElementById("analyzeBtn");
+    var status = document.getElementById("uploadStatus");
+    if (window.settlementFile && window.orderFile) {
+        btn.disabled = false;
+        status.textContent = "已就绪，点击开始核算";
+        status.style.color = "#059669";
+    } else {
+        btn.disabled = true;
+        var parts = [];
+        if (!window.settlementFile) parts.push("结算账单");
+        if (!window.orderFile) parts.push("订单列表");
+        status.textContent = "请上传" + parts.join(" + ");
+        status.style.color = "";
+    }
+}
+
+// ====== 解析 SKU 列表 ======
+function parseSkuList(s) {
+    var items = [];
+    if (!s) return items;
+    var parts = s.replace(/\x08/g, "").split(";");
+    for (var i = 0; i < parts.length; i++) {
+        var part = parts[i].trim();
+        if (!part) continue;
+        var m = part.match(/^(.+?)x(\d+)(?:\[.*?\])?$/);
+        var sku, qty;
+        if (m) { sku = m[1].trim(); qty = parseInt(m[2]); }
+        else { sku = part.replace(/\[.*?\]/g, "").trim(); qty = 1; }
+        var isGift = GIFT_SKUS.has(sku) || part.indexOf("赠品") !== -1;
+        items.push({ sku: sku, qty: qty, raw: part, isGift: isGift });
+    }
+    return items;
+}
+
+function toFloat(v) {
+    if (v === null || v === undefined || v === "") return 0.0;
+    if (typeof v === "number") return v;
+    var s = String(v).replace(/,/g, "").trim();
+    if (s === "-" || s === "/") return 0.0;
+    var n = parseFloat(s);
+    return isNaN(n) ? 0.0 : n;
+}
+
+function text(v) { return (v === null || v === undefined) ? "" : String(v).trim(); }
+
+function fmtMoney(v, cur) { return (cur || "THB") + " " + v.toFixed(2); }
+
+function fmtCNY(v) { return "¥" + v.toFixed(2); }
+
+function fmtPct(v) {
+    if (v === null || v === undefined) return "样品单不计";
+    return v.toFixed(2) + "%";
+}
+
+// ====== 主分析逻辑 ======
+function startAnalysis() {
+    if (!settlementFile || !orderFile) return;
+    showLoading("正在读取 Excel 文件...");
+
+    var readers = [
+        readFileAsArrayBuffer(settlementFile),
+        readFileAsArrayBuffer(orderFile)
+    ];
+
+    Promise.all(readers).then(function(buffers) {
+        showLoading("正在解析表格...");
+        try {
+            var wbSet = XLSX.read(buffers[0], { type: "array" });
+            var wbOrder = XLSX.read(buffers[1], { type: "array" });
+            analyze(wbSet, wbOrder);
+        } catch (e) {
+            hideLoading();
+            document.getElementById("uploadStatus").textContent = "解析失败：" + e.message;
+            document.getElementById("uploadStatus").style.color = "#dc2626";
+        }
+    }).catch(function(err) {
+        hideLoading();
+        document.getElementById("uploadStatus").textContent = "读取文件失败：" + err.message;
+        document.getElementById("uploadStatus").style.color = "#dc2626";
+    });
+}
+
+function readFileAsArrayBuffer(file) {
+    return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(e) { resolve(e.target.result); };
+        reader.onerror = function() { reject(new Error("读取失败")); };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function showLoading(text) {
+    document.getElementById("loadingText").textContent = text || "正在分析...";
+    document.getElementById("loadingOverlay").classList.add("active");
+}
+function hideLoading() {
+    document.getElementById("loadingOverlay").classList.remove("active");
+}
+
+function analyze(wbSet, wbOrder) {
+    // ---- 1. 读取订单列表 ----
+    showLoading("正在解析订单列表...");
+    var wsOrder = wbOrder.Sheets[wbOrder.SheetNames[0]];
+    var orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "" });
+    var orderMap = {};
+    for (var i = 0; i < orderRows.length; i++) {
+        var r = orderRows[i];
+        var tx = text(r["交易号"]);
+        if (!tx) continue;
+        var skuItems = parseSkuList(r["商品SKU列表"]);
+        var namesRaw = text(r["商品名清单"]);
+        var names = namesRaw ? namesRaw.split(";") : [];
+        var knownCost = 0;
+        var missingSkus = [];
+        var displayItems = [];
+        for (var j = 0; j < skuItems.length; j++) {
+            var item = skuItems[j];
+            var cname = j < names.length ? names[j].trim() : "";
+            var c = COST_BY_SKU[item.sku];
+            if (c) {
+                var itemCost = c.unitCostCNY * item.qty;
+                knownCost += itemCost;
+                displayItems.push({ sku: item.sku, qty: item.qty, name: c.name || cname, unitCostCNY: c.unitCostCNY, totalCostCNY: itemCost, matched: true, isGift: item.isGift });
+            } else {
+                if (!item.isGift) missingSkus.push(item.sku);
+                displayItems.push({ sku: item.sku, qty: item.qty, name: cname, unitCostCNY: 0, totalCostCNY: 0, matched: false, isGift: item.isGift });
+            }
+        }
+        orderMap[tx] = {
+            orderNo: text(r["订单编号"]),
+            tradeNo: tx,
+            status: text(r["订单状态"]),
+            items: displayItems,
+            knownProductCostCNY: knownCost,
+            missingSkus: missingSkus,
+        };
+    }
+
+    // ---- 2. 读取结算账单 ----
+    showLoading("正在解析结算账单...");
+    var wsSet = wbSet.Sheets["订单详情"];
+    if (!wsSet) {
+        // 尝试找第一个工作表
+        wsSet = wbSet.Sheets[wbSet.SheetNames[0]];
+    }
+    var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "" });
+    var orders = [];
+    var unmatched = [];
+
+    for (var k = 0; k < setRows.length; k++) {
+        var s = setRows[k];
+        var oid = text(s["订单ID/调整单ID"]);
+        if (!oid) continue;
+
+        // 匹配交易号
+        var om = orderMap[oid];
+        var txKey = oid;
+        if (!om) {
+            var keys = Object.keys(orderMap);
+            for (var kk = 0; kk < keys.length; kk++) {
+                if (oid.indexOf(keys[kk]) === 0 || keys[kk].indexOf(oid) === 0) {
+                    om = orderMap[keys[kk]];
+                    txKey = keys[kk];
+                    break;
+                }
+            }
+        }
+        if (!om) { unmatched.push(oid); }
+
+        var currency = text(s["货币"]) || "THB";
+        var settlement = toFloat(s["结算总金额"]);
+        var totalIncome = toFloat(s["总收入"]);
+        var discountedSubtotal = toFloat(s["享受商家折扣后小计"]);
+        var refundAfter = toFloat(s["享受商家折扣后的退款小计"] || 0);
+        var productCostCNY = om ? om.knownProductCostCNY : 0;
+        var productCostTHB = productCostCNY / THB_CNY;
+        var realProfitTHB = settlement - productCostTHB;
+        var isSample = totalIncome <= 0;
+
+        var baseIncome = isSample ? null : totalIncome;
+        var realMargin = (baseIncome && baseIncome > 0) ? (realProfitTHB / baseIncome * 100) : null;
+        var settlementMargin = (baseIncome && baseIncome > 0) ? (settlement / baseIncome * 100) : null;
+        var low = !isSample && ((realMargin === null) || realMargin < THRESHOLD || settlement <= 0);
+
+        var reason = [];
+        if (isSample) reason.push("样品订单（收入为0）");
+        else if (settlement <= 0 || refundAfter < 0) reason.push("退款/0结算");
+        if (!isSample) {
+            if (realMargin === null) reason.push("无法计算利润率");
+            else if (realMargin < THRESHOLD) reason.push("低于" + THRESHOLD + "%");
+        }
+        if (om && om.missingSkus.length > 0) reason.push("SKU未匹配: " + om.missingSkus.slice(0,5).join(","));
+        if (!om) reason.push("未匹配交易号");
+        if (reason.length === 0) reason.push("正常");
+
+        orders.push({
+            oid: oid,
+            txKey: txKey,
+            orderNo: om ? om.orderNo : "",
+            status: om ? om.status : "",
+            createdAt: text(s["订单创建时间"]),
+            settledAt: text(s["订单结算时间"]),
+            currency: currency,
+            settlement: settlement,
+            totalIncome: totalIncome,
+            discountedSubtotal: discountedSubtotal,
+            productCostCNY: productCostCNY,
+            productCostTHB: productCostTHB,
+            realProfitTHB: realProfitTHB,
+            realProfitCNY: realProfitTHB * THB_CNY,
+            realMargin: realMargin,
+            settlementMargin: settlementMargin,
+            isSample: isSample,
+            lowFlag: low,
+            reason: reason.join("；"),
+            items: om ? om.items : [],
+        });
+    }
+
+    // ---- 3. 分类 ----
+    var sampleOrders = orders.filter(function(o) { return o.isSample; });
+    var normalOrders = orders.filter(function(o) { return !o.isSample; });
+    var lowOrders = normalOrders.filter(function(o) { return o.lowFlag; });
+
+    // ---- 4. 汇总统计 ----
+    function sum(arr, key) { return arr.reduce(function(a, o) { return a + o[key]; }, 0); }
+
+    var summary = {
+        all: orders.length,
+        matched: orders.filter(function(o) { return o.txKey; }).length,
+        unmatched: unmatched.length,
+        sampleCount: sampleOrders.length,
+        normalCount: normalOrders.length,
+        lowCount: lowOrders.length,
+        totalSettlement: sum(orders, "settlement"),
+        totalIncome: sum(orders, "totalIncome"),
+        totalCostCNY: sum(orders, "productCostCNY"),
+        totalCostTHB: sum(orders, "productCostTHB"),
+        totalProfit: sum(orders, "realProfitTHB"),
+        normalSettlement: sum(normalOrders, "settlement"),
+        normalIncome: sum(normalOrders, "totalIncome"),
+        normalCostCNY: sum(normalOrders, "productCostCNY"),
+        normalCostTHB: sum(normalOrders, "productCostTHB"),
+        normalProfit: sum(normalOrders, "realProfitTHB"),
+        sampleCostCNY: sum(sampleOrders, "productCostCNY"),
+        sampleCostTHB: sum(sampleOrders, "productCostTHB"),
+    };
+    summary.normalMargin = summary.normalIncome > 0 ? (summary.normalProfit / summary.normalIncome * 100) : null;
+
+    // ---- 5. 渲染 ----
+    renderResults(summary, orders, lowOrders, sampleOrders, normalOrders);
+    hideLoading();
+}
+
+// ====== 渲染结果 ======
+var allOrders = [];
+var lowOrders = [];
+var sampleOrders = [];
+var currentView = "low";
+
+function renderResults(summary, orders, low, sample, normal) {
+    allOrders = orders;
+    lowOrders = low;
+    sampleOrders = sample;
+
+    // 显示结果区
+    document.getElementById("resultSection").style.display = "block";
+
+    // 汇总卡片
+    document.getElementById("summaryCards").innerHTML =
+        '<div class="card"><div class="lbl">结算订单</div><div class="val">' + summary.all + '</div></div>' +
+        '<div class="card"><div class="lbl">成功匹配</div><div class="val ok">' + summary.matched + '</div></div>' +
+        '<div class="card"><div class="lbl">未匹配</div><div class="val danger">' + summary.unmatched + '</div></div>' +
+        '<div class="card sample-card"><div class="lbl">样品订单</div><div class="val sample-text">' + summary.sampleCount + '</div></div>' +
+        '<div class="card"><div class="lbl">正常收入订单</div><div class="val">' + summary.normalCount + '</div></div>' +
+        '<div class="card"><div class="lbl">低于' + THRESHOLD + '%</div><div class="val danger">' + summary.lowCount + '</div></div>' +
+        '<div class="card"><div class="lbl">订单利润率</div><div class="val ' + (summary.normalMargin !== null && summary.normalMargin < THRESHOLD ? 'danger' : 'ok') + '">' + fmtPct(summary.normalMargin) + '</div></div>' +
+        '<div class="card sample-card"><div class="lbl">样品单成本</div><div class="val sample-text">' + fmtCNY(summary.sampleCostCNY) + '</div></div>';
+
+    document.getElementById("summaryNote").innerHTML =
+        '<b>口径说明：</b>样品订单 = 总收入为 0 的订单，单独统计不参与低利润筛选。<br>' +
+        '正常订单：结算总额 ' + fmtMoney(summary.normalSettlement) + ' | 商品成本 ' + fmtCNY(summary.normalCostCNY) + ' ≈ ' + fmtMoney(summary.normalCostTHB) + ' | 到账利润 ' + fmtMoney(summary.normalProfit);
+    if (summary.unmatched.length > 0) {
+        document.getElementById("summaryNote").innerHTML += '<br><b>未匹配交易号：</b>' + summary.unmatched.join(", ");
+    }
+
+    // Tab 计数
+    document.getElementById("lowCount").textContent = low.length;
+    document.getElementById("sampleCount").textContent = sample.length;
+    document.getElementById("allCount").textContent = orders.length;
+
+    // 默认显示低利润
+    currentView = "low";
+    switchView("low");
+}
+
+function switchView(view) {
+    currentView = view;
+    // 更新 tab 样式
+    var tabs = document.querySelectorAll(".tab");
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].classList.remove("active");
+        if (tabs[i].dataset.view === view) tabs[i].classList.add("active");
+    }
+
+    var data;
+    if (view === "low") data = lowOrders;
+    else if (view === "sample") data = sampleOrders;
+    else data = allOrders;
+
+    renderTable(data);
+}
+
+function renderTable(orders) {
+    var tbody = document.getElementById("resultBody");
+    if (orders.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="11" class="empty">没有数据</td></tr>';
+        return;
+    }
+
+    var html = "";
+    for (var i = 0; i < orders.length; i++) {
+        var o = orders[i];
+        var cls = o.isSample ? "sample" : (o.lowFlag ? "bad" : "");
+        var marginClass = o.isSample ? "sample-text" : (o.lowFlag ? "danger" : "ok");
+        var profitClass = o.realProfitTHB < 0 ? "danger" : "ok";
+        var skuHtml = renderSku(o.items);
+
+        html += '<tr class="' + cls + '">' +
+            '<td class="mono">' + o.oid + '<br><small>' + (o.orderNo || "-") + '</small></td>' +
+            '<td>' + (o.status || "-") + '</td>' +
+            '<td>' + o.createdAt + '<br><small>' + o.settledAt + '</small></td>' +
+            '<td class="num">' + fmtMoney(o.settlement, o.currency) + '</td>' +
+            '<td class="num">' + fmtMoney(o.totalIncome, o.currency) + '</td>' +
+            '<td class="num">' + fmtMoney(o.discountedSubtotal, o.currency) + '</td>' +
+            '<td class="num">' + fmtCNY(o.productCostCNY) + '<br><small>' + fmtMoney(o.productCostTHB, o.currency) + '</small></td>' +
+            '<td class="num ' + profitClass + '">' + fmtMoney(o.realProfitTHB, o.currency) + '<br><small>' + fmtCNY(o.realProfitCNY) + '</small></td>' +
+            '<td class="num ' + marginClass + '">' + fmtPct(o.realMargin) + '<br><small>结算率 ' + fmtPct(o.settlementMargin) + '</small></td>' +
+            '<td>' + skuHtml + '</td>' +
+            '<td>' + o.reason + '</td>' +
+            '</tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+function renderSku(items) {
+    if (!items || items.length === 0) return "-";
+    var html = "";
+    var maxShow = 10;
+    for (var i = 0; i < Math.min(items.length, maxShow); i++) {
+        var it = items[i];
+        var costStr = it.matched ? fmtCNY(it.totalCostCNY) : (it.isGift ? "赠品/未计" : "未匹配");
+        var cls = (!it.matched && !it.isGift) ? ' style="color:var(--red)"' : "";
+        html += '<div class="sku-item"' + cls + '><b>' + it.sku + '</b> × ' + it.qty + ' <span>' + costStr + '</span><br><em>' + it.name + '</em></div>';
+    }
+    if (items.length > maxShow) html += '<div class="sku-item" style="color:var(--muted)">...还有 ' + (items.length - maxShow) + ' 个SKU</div>';
+    return html;
+}
+</script>
+</body>
+</html>

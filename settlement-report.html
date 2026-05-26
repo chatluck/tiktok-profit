@@ -136,10 +136,6 @@ small{color:var(--muted);font-weight:500}
     <div class="hero" id="uploadSection">
     <h1>结算订单利润分析</h1>
     <div class="sub">上传 TikTok 结算账单和订单列表，自动匹配 SKU 成本，核算每笔订单的到账利润。样品订单（收入=0）自动单独统计。</div>
-    <div class="note warn" style="margin-bottom:14px;font-size:.82rem">
-      <b>注意：</b>TikTok 导出的 XLSX 文件可能被浏览器错误截断。如果发现只读到1单，
-      请使用 <b>JSON 模式</b>：先在电脑上双击 <code>convert_settlement.bat</code> 生成 JSON 文件，再拖入下方 JSON 区域。
-    </div>
     <div class="upload-grid">
       <div class="upload-box" id="dropSettlement" onclick="document.getElementById('fileSettlement').click()">
         <div class="upload-icon">&#128202;</div>
@@ -560,7 +556,7 @@ function analyze(wbSet, wbOrder) {
     // ---- 1. 读取订单列表 ----
     showLoading("正在解析订单列表...");
     var wsOrder = wbOrder.Sheets[wbOrder.SheetNames[0]];
-    var orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "" });
+    var orderRows = XLSX.utils.sheet_to_json(wsOrder, { defval: "", raw: true });
     var orderMap = {};
     for (var i = 0; i < orderRows.length; i++) {
         var r = orderRows[i];
@@ -602,18 +598,7 @@ function analyze(wbSet, wbOrder) {
         // 尝试找第一个工作表
         wsSet = wbSet.Sheets[wbSet.SheetNames[0]];
     }
-    var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "" });
-    
-    // 检测 XLSX 是否被截断：如果行数 <= 1，告知用户用 JSON 模式
-    if (setRows.length <= 1) {
-        hideLoading();
-        document.getElementById("uploadStatus").innerHTML = 
-            'TikTok 导出的 XLSX 文件范围信息不完整，无法正确读取。请先用 <b>convert_settlement.py</b> 转换为 JSON 模式。<br>' +
-            '步骤：在电脑上运行 <code>python convert_settlement.py --income income.xlsx --orders orders.xlsx</code>，' +
-            '把生成的 settlement-data.json 拖入上方蓝色区域。';
-        document.getElementById("uploadStatus").style.color = "#dc2626";
-        return;
-    }
+    var setRows = XLSX.utils.sheet_to_json(wsSet, { defval: "", raw: true });
     
     var orders = [];
     var unmatched = [];

@@ -80,6 +80,12 @@ body:before{
 .tab.on{background:#0f172a;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.22)}
 .info-box{display:flex;justify-content:space-between;gap:12px;align-items:center;background:linear-gradient(135deg,#ecfeff,#f8fafc);border:1px solid #ccfbf1;border-radius:16px;padding:13px 14px;margin-bottom:18px;color:#475569;font-size:.86rem}
 .info-box .rate{display:block;font-weight:900;color:#0f766e;font-size:.98rem;margin-top:2px}
+.rate-actions{display:flex;align-items:flex-end;gap:8px;flex-direction:column;text-align:right}
+.rate-note{font-size:.76rem;color:#64748b;line-height:1.45}
+.rate-btn{border:none;background:#0f172a;color:#fff;border-radius:999px;padding:8px 12px;font-size:.78rem;font-weight:900;cursor:pointer;white-space:nowrap;box-shadow:0 10px 24px rgba(15,23,42,.18)}
+.rate-btn:hover{background:#0f766e}
+.rate-btn:disabled{opacity:.55;cursor:not-allowed}
+.rate-warning{display:none;margin:-8px 0 12px;padding:10px 12px;border-radius:14px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:.8rem;line-height:1.45}
 .search-wrap{position:relative;margin-bottom:14px}
 .search-wrap input{width:100%;height:50px;padding:0 16px 0 44px;border:1px solid #cbd5e1;border-radius:16px;font-size:1rem;outline:none;background:#fff;transition:.18s;box-shadow:0 1px 0 rgba(15,23,42,.03)}
 .search-wrap input:focus{border-color:var(--brand2);box-shadow:0 0 0 4px rgba(20,184,166,.13)}
@@ -199,8 +205,12 @@ body:before{
             </div>
             <div class="info-box">
                 <div>汇率设置 <span class="rate" id="rateInfo">1 THB ≈ 0.2088 CNY</span></div>
-                <small>可使用默认缓存值，也可手动覆盖</small>
+                <div class="rate-actions">
+                    <button class="rate-btn" id="refreshRateBtn" onclick="refreshRates(true)">刷新实时汇率</button>
+                    <small class="rate-note" id="rateNote">打开页面会自动刷新；失败时使用缓存值</small>
+                </div>
             </div>
+            <div class="rate-warning" id="rateWarning"></div>
             <div class="search-wrap">
                 <span class="search-icon">⌕</span>
                 <input type="text" id="prodSearch" placeholder="输入SKU或名称搜索产品..." oninput="doSearch()" onfocus="if(allProducts.length&&this.value)doSearch()">
@@ -232,7 +242,7 @@ body:before{
                     <div class="fg"><label>基础设施费 <span id="infraCur">THB</span></label><input type="number" id="infraFee" value="1.07" step="0.01"></div>
                 </div>
                 <div class="row">
-                    <div class="fg"><label>手动汇率 <span>可选</span></label><input type="number" id="custRate" placeholder="留空使用默认" step="0.0001"></div>
+                    <div class="fg"><label>手动汇率 <span>可选</span></label><input type="number" id="custRate" placeholder="留空自动实时刷新" step="0.0001" min="0.01" max="1"></div>
                     <div class="fg"><label>&nbsp;</label><button class="btn" onclick="doCalculate()">计算到账利润</button></div>
                 </div>
             </div>
@@ -270,7 +280,7 @@ body:before{
             <h2>使用提示</h2>
             <div class="tip"><span class="tip-num">1</span><span>搜索框输入 SKU 或名称，选中产品后自动填入日常定价和成本。</span></div>
             <div class="tip"><span class="tip-num">2</span><span>平台费用默认值来自结算截图反推，可按店铺实际费率调整。</span></div>
-            <div class="tip"><span class="tip-num">3</span><span>手动汇率留空时使用默认值：THB≈0.2088，PHP≈0.1105。</span></div>
+            <div class="tip"><span class="tip-num">3</span><span>打开页面会自动拉取实时汇率；如果接口不可用，会使用本地缓存或默认值。手动汇率留空即可自动更新。</span></div>
         </div>
     </div>
 </div>
@@ -282,8 +292,11 @@ var allProducts = [{"market":"泰国","purchaseCost":9.6,"dailyPrice":74,"size":
 var selectedProduct = null;
 var history = [];
 
-// 默认汇率（最近已知值）
+// 默认汇率（接口失败时使用）
 var RATES = { TH: 0.2088, PH: 0.1105 };
+var RATE_META = { source: '默认值', updatedAt: '' };
+var RATE_LIMITS = { TH: { min: 0.15, max: 0.25 }, PH: { min: 0.09, max: 0.14 } };
+var RATE_API = 'https://open.er-api.com/v6/latest/CNY';
 
 // 初始化历史记录
 try {
@@ -295,6 +308,9 @@ try {
 console.log('页面加载完成，产品数：' + allProducts.length);
 document.getElementById('prodSearch').disabled = false;
 document.getElementById('prodSearch').placeholder = '输入SKU或名称搜索产品...(' + allProducts.length + '个产品)';
+loadCachedRates();
+updateRateDisplay();
+refreshRates(false);
 renderHistory();
 
 // ====== 市场切换 ======
@@ -310,15 +326,120 @@ function switchMarket(m) {
 }
 
 // ====== 汇率显示 ======
+function loadCachedRates() {
+    try {
+        var cached = localStorage.getItem('tk_profit_rates');
+        if (!cached) return;
+        var data = JSON.parse(cached);
+        if (data && data.TH && data.PH && isValidRate('TH', data.TH) && isValidRate('PH', data.PH)) {
+            RATES.TH = Number(data.TH);
+            RATES.PH = Number(data.PH);
+            RATE_META.source = '缓存汇率';
+            RATE_META.updatedAt = data.updatedAt || '';
+        }
+    } catch(e) {}
+}
+
+function isValidRate(market, value) {
+    var n = Number(value);
+    var lim = RATE_LIMITS[market];
+    return isFinite(n) && lim && n >= lim.min && n <= lim.max;
+}
+
+function getManualRate() {
+    var raw = document.getElementById('custRate').value;
+    if (raw === '') return null;
+    var n = parseFloat(raw);
+    return isFinite(n) ? n : null;
+}
+
+function showRateWarning(msg) {
+    var el = document.getElementById('rateWarning');
+    if (!el) return;
+    if (!msg) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.innerHTML = msg;
+}
+
+function formatRateTime(text) {
+    if (!text) return '';
+    try {
+        return new Date(text).toLocaleString('zh-CN');
+    } catch(e) {
+        return text;
+    }
+}
+
 function updateRateDisplay() {
-    var cr = parseFloat(document.getElementById('custRate').value);
-    var rate = cr || RATES[currentMarket];
+    var manual = getManualRate();
     var cur = currentMarket === 'TH' ? 'THB' : 'PHP';
+    var rate = RATES[currentMarket];
+    var note = document.getElementById('rateNote');
+
+    if (manual !== null) {
+        if (!isValidRate(currentMarket, manual)) {
+            showRateWarning('当前手动汇率 ' + manual + ' 看起来不合理，已自动忽略。泰铢建议约 0.15-0.25，菲律宾比索建议约 0.09-0.14。');
+        } else {
+            rate = manual;
+            showRateWarning('');
+        }
+    } else {
+        showRateWarning('');
+    }
+
     document.getElementById('rateInfo').innerHTML =
         '1 ' + cur + ' ≈ ' + rate.toFixed(4) + ' CNY' +
-        (cr ? ' <span style="color:#b45309">(手动)</span>' : '');
+        (manual !== null && isValidRate(currentMarket, manual) ? ' <span style="color:#b45309">(手动)</span>' : '');
+
+    if (note) {
+        var timeText = RATE_META.updatedAt ? ' · ' + formatRateTime(RATE_META.updatedAt) : '';
+        note.textContent = RATE_META.source + timeText;
+    }
 }
+
 document.getElementById('custRate').addEventListener('input', updateRateDisplay);
+
+function refreshRates(manualClick) {
+    var btn = document.getElementById('refreshRateBtn');
+    var note = document.getElementById('rateNote');
+    if (btn) btn.disabled = true;
+    if (note) note.textContent = '正在刷新实时汇率...';
+
+    fetch(RATE_API, { cache: 'no-store' })
+        .then(function(res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function(data) {
+            if (!data || !data.rates || !data.rates.THB || !data.rates.PHP) throw new Error('接口数据缺失');
+            var th = 1 / Number(data.rates.THB);
+            var ph = 1 / Number(data.rates.PHP);
+            if (!isValidRate('TH', th) || !isValidRate('PH', ph)) throw new Error('接口汇率异常');
+            RATES.TH = th;
+            RATES.PH = ph;
+            RATE_META.source = '实时汇率';
+            RATE_META.updatedAt = data.time_last_update_utc || new Date().toISOString();
+            try {
+                localStorage.setItem('tk_profit_rates', JSON.stringify({ TH: RATES.TH, PH: RATES.PH, updatedAt: RATE_META.updatedAt }));
+            } catch(e) {}
+            showRateWarning('');
+            updateRateDisplay();
+        })
+        .catch(function(err) {
+            RATE_META.source = RATE_META.source || '默认值';
+            updateRateDisplay();
+            if (manualClick) {
+                showRateWarning('实时汇率刷新失败，已继续使用缓存/默认汇率。原因：' + err.message);
+            }
+        })
+        .then(function() {
+            if (btn) btn.disabled = false;
+        });
+}
 
 // ====== 产品搜索 ======
 var searchTimer = null;
@@ -471,8 +592,8 @@ function doCalculate() {
     var commRate = (parseFloat(document.getElementById('commFee').value) || 7.49) / 100;
     var svcRate = (parseFloat(document.getElementById('svcFee').value) || 8.03) / 100;
     var infraFeeVal = parseFloat(document.getElementById('infraFee').value) || 1.07;
-    var customRate = parseFloat(document.getElementById('custRate').value);
-    var exchangeRate = customRate || RATES[currentMarket];
+    var customRate = getManualRate();
+    var exchangeRate = isValidRate(currentMarket, customRate) ? customRate : RATES[currentMarket];
 
     var currency = currentMarket === 'TH' ? 'THB' : 'PHP';
     var revenue = salePrice * qty * exchangeRate;

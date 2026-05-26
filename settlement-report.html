@@ -485,9 +485,9 @@ function analyzeFromJson(data) {
 }
 
 function renderResultsFromOrders(orders, unmatched) {
-    var sampleOrders = orders.filter(function(o) { return o.isSample; });
-    var normalOrders = orders.filter(function(o) { return !o.isSample; });
-    var lowOrders = normalOrders.filter(function(o) { return o.lowFlag; });
+    var sampleOrdersList = orders.filter(function(o) { return o.isSample; });
+    var normalOrdersList = orders.filter(function(o) { return !o.isSample; });
+    var lowOrdersList = normalOrdersList.filter(function(o) { return o.lowFlag; });
 
     function sum(arr, key) { return arr.reduce(function(a, o) { return a + o[key]; }, 0); }
 
@@ -495,24 +495,24 @@ function renderResultsFromOrders(orders, unmatched) {
         all: orders.length,
         matched: orders.filter(function(o) { return o.txKey; }).length,
         unmatched: unmatched.length,
-        sampleCount: sampleOrders.length,
-        normalCount: normalOrders.length,
-        lowCount: lowOrders.length,
+        sampleCount: sampleOrdersList.length,
+        normalCount: normalOrdersList.length,
+        lowCount: lowOrdersList.length,
         totalSettlement: sum(orders, "settlement"),
         totalIncome: sum(orders, "totalIncome"),
         totalCostCNY: sum(orders, "productCostCNY"),
         totalProfit: sum(orders, "realProfit"),
-        normalSettlement: sum(normalOrders, "settlement"),
-        normalIncome: sum(normalOrders, "totalIncome"),
-        normalCostCNY: sum(normalOrders, "productCostCNY"),
-        normalProfit: sum(normalOrders, "realProfit"),
-        sampleCostCNY: sum(sampleOrders, "productCostCNY"),
+        normalSettlement: sum(normalOrdersList, "settlement"),
+        normalIncome: sum(normalOrdersList, "totalIncome"),
+        normalCostCNY: sum(normalOrdersList, "productCostCNY"),
+        normalProfit: sum(normalOrdersList, "realProfit"),
+        sampleCostCNY: sum(sampleOrdersList, "productCostCNY"),
     };
     summary.normalMargin = summary.normalIncome > 0 ? (summary.normalProfit / summary.normalIncome * 100) : null;
 
     allOrders = orders;
-    lowOrders = lowOrders;
-    sampleOrders = sampleOrders;
+    lowOrders = lowOrdersList;
+    sampleOrders = sampleOrdersList;
 
     document.getElementById("resultSection").style.display = "block";
     document.getElementById("summaryCards").innerHTML =

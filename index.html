@@ -183,6 +183,7 @@ body:before{
                 <div class="quick-item"><span>交易手续费</span><strong>3.21%</strong></div>
                 <div class="quick-item"><span>Shop 佣金</span><strong>7.49%</strong></div>
                 <div class="quick-item"><span>增长服务费</span><strong>8.03%</strong></div>
+                <div class="quick-item"><span>超级优惠券</span><strong>按实际</strong></div>
                 <div class="quick-item"><span>基础设施费</span><strong>固定金额</strong></div>
             </div>
         </div>
@@ -239,6 +240,9 @@ body:before{
                 </div>
                 <div class="row">
                     <div class="fg"><label>增长服务费 <span>%</span></label><input type="number" id="svcFee" value="8.03" step="0.01"></div>
+                    <div class="fg"><label>超级优惠券 <span>%</span></label><input type="number" id="couponFee" value="0" step="0.01"></div>
+                </div>
+                <div class="row">
                     <div class="fg"><label>基础设施费 <span id="infraCur">THB</span></label><input type="number" id="infraFee" value="1.07" step="0.01"></div>
                 </div>
                 <div class="row">
@@ -591,6 +595,7 @@ function doCalculate() {
     var txnRate = (parseFloat(document.getElementById('txnFee').value) || 3.21) / 100;
     var commRate = (parseFloat(document.getElementById('commFee').value) || 7.49) / 100;
     var svcRate = (parseFloat(document.getElementById('svcFee').value) || 8.03) / 100;
+    var couponRate = (parseFloat(document.getElementById('couponFee').value) || 0) / 100;
     var infraFeeVal = parseFloat(document.getElementById('infraFee').value) || 1.07;
     var customRate = getManualRate();
     var exchangeRate = isValidRate(currentMarket, customRate) ? customRate : RATES[currentMarket];
@@ -604,13 +609,14 @@ function doCalculate() {
     var txnLocal = salePrice * qty * txnRate;
     var commLocal = salePrice * qty * commRate;
     var svcLocal = salePrice * qty * svcRate;
+    var couponLocal = salePrice * qty * couponRate;
     var infraLocal = infraFeeVal * qty;
-    var platFeeCNY = (txnLocal + commLocal + svcLocal + infraLocal) * exchangeRate;
+    var platFeeCNY = (txnLocal + commLocal + svcLocal + couponLocal + infraLocal) * exchangeRate;
 
     var profit = revenue - totalCostCNY - platFeeCNY;
     var profitRate = revenue > 0 ? (profit / revenue * 100) : 0;
     // 保本价
-    var feeSum = txnRate + commRate + svcRate;
+    var feeSum = txnRate + commRate + svcRate + couponRate;
     var breakEven = (1 - feeSum) > 0 ? (unitCostCNY + infraFeeVal * exchangeRate) / (exchangeRate * (1 - feeSum)) : 0;
 
     // 构建结果HTML
@@ -630,6 +636,7 @@ function doCalculate() {
     html += addRow('交易手续费(' + (txnRate*100).toFixed(1) + '%)', currency + ' ' + txnLocal.toFixed(2) + ' / ¥' + (txnLocal*exchangeRate).toFixed(2));
     html += addRow('佣金(' + (commRate*100).toFixed(1) + '%)', currency + ' ' + commLocal.toFixed(2) + ' / ¥' + (commLocal*exchangeRate).toFixed(2));
     html += addRow('增长服务费(' + (svcRate*100).toFixed(1) + '%)', currency + ' ' + svcLocal.toFixed(2) + ' / ¥' + (svcLocal*exchangeRate).toFixed(2));
+    html += addRow('超级优惠券(' + (couponRate*100).toFixed(1) + '%)', currency + ' ' + couponLocal.toFixed(2) + ' / ¥' + (couponLocal*exchangeRate).toFixed(2));
     html += addRow('基础设施费(固定)', currency + ' ' + infraLocal.toFixed(2) + ' / ¥' + (infraLocal*exchangeRate).toFixed(2));
     html += addRow('平台费合计', '¥' + platFeeCNY.toFixed(2), true);
     html += '<div style="margin:12px 0 4px;font-size:.8rem;color:#64748b;border-top:1px solid #eef2f7;padding-top:12px;font-weight:900">商品成本</div>';

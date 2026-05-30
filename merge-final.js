@@ -1,23 +1,24 @@
 const fs = require('fs');
+const path = require('path');
 
-// 0421表：完整产品+成本数据
-const data0421 = JSON.parse(fs.readFileSync('products-data-0421.json', 'utf-8').replace(/^\uFEFF/, ''));
-// 20260518表：正确定价
-const data0518 = JSON.parse(fs.readFileSync('products-data-0518.json', 'utf-8').replace(/^\uFEFF/, ''));
+const ROOT = __dirname;
+const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'project-config.json'), 'utf-8'));
+const paths = config.paths;
 
-console.log('0421表（有成本）:', data0421.products.length);
-console.log('0518表（有定价）:', data0518.products.length);
+const data0421 = JSON.parse(fs.readFileSync(path.join(ROOT, paths.costProducts), 'utf-8').replace(/^\uFEFF/, ''));
+const data0518 = JSON.parse(fs.readFileSync(path.join(ROOT, paths.pricingProducts), 'utf-8').replace(/^\uFEFF/, ''));
 
-// 建立0518表的SKU→定价映射
+console.log('Cost products:', data0421.products.length);
+console.log('Pricing products:', data0518.products.length);
+
 var priceMap = {};
 data0518.products.forEach(function(p) {
     if (p.sku && p.dailyPrice != null) {
         priceMap[p.sku] = { price: p.dailyPrice, margin: p.dailyMargin };
     }
 });
-console.log('定价映射:', Object.keys(priceMap).length, '条');
+console.log('Pricing map:', Object.keys(priceMap).length);
 
-// 合并：0421表为基础，用0518表定价覆盖
 var matched = 0;
 data0421.products.forEach(function(p) {
     var mapped = priceMap[p.sku];
@@ -28,9 +29,8 @@ data0421.products.forEach(function(p) {
     }
 });
 
-console.log('匹配到定价:', matched, '个');
+console.log('Matched prices:', matched);
 
-// 输出
 var out = JSON.stringify({ count: data0421.products.length, products: data0421.products });
-fs.writeFileSync('products-data.json', out, 'utf-8');
-console.log('输出:', data0421.products.length, '个产品,', (Buffer.byteLength(out)/1024).toFixed(0), 'KB');
+fs.writeFileSync(path.join(ROOT, paths.products), out, 'utf-8');
+console.log('Output:', paths.products, data0421.products.length, 'products', (Buffer.byteLength(out) / 1024).toFixed(0), 'KB');

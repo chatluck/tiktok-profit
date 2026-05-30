@@ -1,0 +1,25 @@
+{
+  "paths": {
+    "costSource": "E:/控价/0421 - 测试成本使用.xlsx",
+    "costProducts": "products-data-0421.json",
+    "pricingProducts": "products-data-0518.json",
+    "products": "products-data.json",
+    "profitTemplate": "tiktok-profit-new.html",
+    "profitOutput": "tiktok-profit-final.html",
+    "siteIndex": "index.html",
+    "settlementTemplate": "settlement-analyzer.html",
+    "settlementOutput": "settlement-report.html"
+  },
+  "business": {
+    "exchangeRates": {
+      "TH": 0.2088,
+      "PH": 0.1105
+    },
+    "rateLimits": {
+      "TH": { "min": 0.15, "max": 0.25 },
+      "PH": { "min": 0.09, "max": 0.14 }
+    },
+    "lowProfitThresholdPercent": 25,
+    "giftSkus": ["1A0009"]
+  }
+}

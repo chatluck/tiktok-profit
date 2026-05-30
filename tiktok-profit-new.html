@@ -293,13 +293,14 @@ body:before{
 // ====== 全局变量 ======
 var currentMarket = 'TH';
 var allProducts = __PRODUCTS_DATA_PLACEHOLDER__;
+var BUSINESS_CONFIG = __BUSINESS_CONFIG_PLACEHOLDER__;
 var selectedProduct = null;
 var history = [];
 
 // 默认汇率（接口失败时使用）
-var RATES = { TH: 0.2088, PH: 0.1105 };
+var RATES = BUSINESS_CONFIG.exchangeRates || { TH: 0.2088, PH: 0.1105 };
 var RATE_META = { source: '默认值', updatedAt: '' };
-var RATE_LIMITS = { TH: { min: 0.15, max: 0.25 }, PH: { min: 0.09, max: 0.14 } };
+var RATE_LIMITS = BUSINESS_CONFIG.rateLimits || { TH: { min: 0.15, max: 0.25 }, PH: { min: 0.09, max: 0.14 } };
 var RATE_API = 'https://open.er-api.com/v6/latest/CNY';
 
 // 初始化历史记录

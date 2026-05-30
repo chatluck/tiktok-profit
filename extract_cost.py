@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 import openpyxl
 
-SRC = Path(r"E:/控价/0421 - 测试成本使用.xlsx")
-OUT = Path(r"E:/项目/利润/products-data-0421.json")
+BASE = Path(__file__).resolve().parent
+CONFIG = json.loads((BASE / "project-config.json").read_text(encoding="utf-8"))
+SRC = Path(CONFIG["paths"]["costSource"])
+OUT = BASE / CONFIG["paths"]["costProducts"]
 
 wb = openpyxl.load_workbook(SRC, data_only=True, read_only=True)
 
